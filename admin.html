@@ -608,7 +608,7 @@
             try {
                 const [students, history] = await Promise.all([
                     sbFetch("students?select=*&order=created_at.desc"),
-                    sbFetch("quiz_history?select=*&order=played_at.desc&limit=500")
+                    sbFetch("quiz_history_en?select=*&order=played_at.desc&limit=500")
                 ]);
                 allStudents = students || [];
                 allHistory = history || [];
@@ -616,8 +616,8 @@
                 // Load quizzes & assignments if tables exist
                 try {
                     const [quizzes, assigns] = await Promise.all([
-                        sbFetch("quizzes?select=*&order=created_at.desc"),
-                        sbFetch("quiz_assignments?select=*&order=assigned_at.desc&limit=1000")
+                        sbFetch("quizzes_en?select=*&order=created_at.desc"),
+                        sbFetch("quiz_assignments_en?select=*&order=assigned_at.desc&limit=1000")
                     ]);
                     allQuizzes = quizzes || [];
                     allAssignments = assigns || [];
@@ -1029,7 +1029,7 @@
             btn.disabled = true;
             btn.textContent = "⏳ 正在创建并派发...";
             try {
-                const created = await sbFetch("quizzes", {
+                const created = await sbFetch("quizzes_en", {
                     method: "POST",
                     headers: { "Prefer": "return=representation" },
                     body: JSON.stringify({
@@ -1049,7 +1049,7 @@
                     status: "pending",
                     attempt_no: 1
                 }));
-                await sbFetch("quiz_assignments", {
+                await sbFetch("quiz_assignments_en", {
                     method: "POST",
                     body: JSON.stringify(assignRows)
                 });
@@ -1061,7 +1061,7 @@
                 suggestNextQuizCode();
             } catch (err) {
                 msgEl.style.color = "#f87171";
-                msgEl.textContent = "❌ 创建失败（请确认已在 Supabase 创建 quizzes 和 quiz_assignments 表）：" + err.message;
+                msgEl.textContent = "❌ 创建失败（请确认已在 Supabase 创建 quizzes_en 和 quiz_assignments_en 表）：" + err.message;
             } finally {
                 btn.disabled = false;
                 btn.textContent = "🚀 创建测验并立即派发";
@@ -1071,7 +1071,7 @@
         async function reassignToStudent(assignmentId, quizCode, stuName, currentAttempt) {
             if (!confirm(`确定将「${quizCode}」重新派发给「${stuName}」（第 ${(currentAttempt || 1) + 1} 次作答）吗？`)) return;
             try {
-                await sbFetch(`quiz_assignments?id=eq.${assignmentId}`, {
+                await sbFetch(`quiz_assignments_en?id=eq.${assignmentId}`, {
                     method: "PATCH",
                     body: JSON.stringify({
                         status: "pending",
@@ -1092,7 +1092,7 @@
             const existing = allAssignments.find(a => a.quiz_id === quizId && a.student_id === stuId);
             try {
                 if (existing) {
-                    await sbFetch(`quiz_assignments?id=eq.${existing.id}`, {
+                    await sbFetch(`quiz_assignments_en?id=eq.${existing.id}`, {
                         method: "PATCH",
                         body: JSON.stringify({
                             status: "pending",
@@ -1101,7 +1101,7 @@
                         })
                     });
                 } else {
-                    await sbFetch("quiz_assignments", {
+                    await sbFetch("quiz_assignments_en", {
                         method: "POST",
                         body: JSON.stringify({
                             quiz_id: quizId,
