@@ -961,6 +961,27 @@
             </div>
         </div>
 
+        <!-- Mid-Quiz Quit Warning Modal -->
+        <div class="history-modal-overlay" id="quit-warn-overlay" style="z-index:220;">
+            <div class="history-modal-card" style="max-width:440px; text-align:center; padding:24px 22px;">
+                <div style="font-size:2.6em; margin-bottom:6px;">⚠️</div>
+                <h2 style="margin:0 0 8px 0; color:#e65100; font-size:1.35em;">测验尚未完成！(Quiz Not Finished)</h2>
+                <p style="margin:0 0 14px 0; color:#455a64; font-size:0.95em;">你正在作答中，确定要中途退出吗？</p>
+                <div style="background:#fff8e1; border:2px solid #ffe082; border-radius:14px; padding:14px; margin-bottom:16px;">
+                    <div style="font-size:1.25em; font-weight:900; color:#1565c0; margin-bottom:6px;" id="quit-warn-progress">当前进度：0 / 20</div>
+                    <div style="font-size:1.05em; font-weight:800; display:flex; justify-content:center; gap:18px;">
+                        <span style="color:#2e7d32;">✅ 答对：<span id="quit-warn-correct">0</span></span>
+                        <span style="color:#c62828;">❌ 答错：<span id="quit-warn-wrong">0</span></span>
+                    </div>
+                </div>
+                <p style="margin:0 0 16px 0; font-size:0.85em; color:#78909c;">☁️ 当前作答进度与错题已实时保存至云端。</p>
+                <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                    <button class="action-round-btn" style="background:linear-gradient(135deg,#43a047,#2e7d32); padding:10px 22px; font-size:1em;" onclick="cancelQuitQuiz()">▶️ 继续作答 (Continue)</button>
+                    <button class="action-round-btn" style="background:linear-gradient(135deg,#e53935,#c62828); padding:10px 22px; font-size:1em;" onclick="confirmQuitQuiz()">🚪 确定退出 (Quit)</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Top status bar -->
         <div class="top-bar">
             <div class="level-wrapper">
@@ -978,7 +999,7 @@
             </div>
 
             <div class="control-buttons">
-                <select class="category-select" id="category-filter" onchange="startNewSet()">
+                <select class="category-select" id="category-filter" onchange="onCategoryFilterChange()">
                     <option value="ALL">🌟 全部词汇 (All: 291词)</option>
                     <option value="Unit 5: Free Time">📘 Unit 5: Free Time (62词)</option>
                     <option value="Unit 6: The Old House">🏠 Unit 6: The Old House (55词)</option>
@@ -990,6 +1011,7 @@
                 <button class="top-btn" id="history-btn" onclick="openHistoryModal()">📊 记录</button>
                 <button class="top-btn" id="sfx-toggle-btn" onclick="toggleSFX()">🔊 音效</button>
                 <button class="top-btn" id="bgm-toggle-btn" onclick="toggleBGM()">🎵 音乐</button>
+                <button class="top-btn" id="quit-quiz-btn" style="color:#c62828; border-color:#ef9a9a;" onclick="requestQuitQuiz('reset')">🚪 退出</button>
             </div>
         </div>
 
@@ -1244,6 +1266,64 @@
         let hasMadeMistakeThisRound = false;
         let currentHistoryRowId = null;
         let liveSyncPromise = Promise.resolve();
+        let lastConfirmedCategory = "ALL";
+        let pendingQuitAction = null;
+
+        function isQuizInProgress() {
+            const celebrateEl = document.getElementById('celebrate-screen');
+            const isCelebrating = celebrateEl && celebrateEl.style.display === 'flex';
+            return activePool.length > 0 && (scoreBetul + scoreSalah) > 0 && currentIndex < activePool.length && !isCelebrating;
+        }
+
+        function onCategoryFilterChange() {
+            const sel = document.getElementById('category-filter');
+            if (isQuizInProgress()) {
+                requestQuitQuiz('switch_cat');
+            } else {
+                lastConfirmedCategory = sel.value;
+                startNewSet();
+            }
+        }
+
+        function requestQuitQuiz(action) {
+            if (!isQuizInProgress()) {
+                if (action === 'switch_cat') startNewSet();
+                else startNewSet();
+                return;
+            }
+            pendingQuitAction = action;
+            const answered = scoreBetul + scoreSalah;
+            const totalQ = activePool.length || QUESTIONS_PER_SET;
+            document.getElementById('quit-warn-progress').textContent = `当前进度：${answered} / ${totalQ}`;
+            document.getElementById('quit-warn-correct').textContent = scoreBetul;
+            document.getElementById('quit-warn-wrong').textContent = scoreSalah;
+            document.getElementById('quit-warn-overlay').style.display = 'flex';
+        }
+
+        function cancelQuitQuiz() {
+            if (pendingQuitAction === 'switch_cat') {
+                document.getElementById('category-filter').value = lastConfirmedCategory;
+            }
+            pendingQuitAction = null;
+            document.getElementById('quit-warn-overlay').style.display = 'none';
+        }
+
+        function confirmQuitQuiz() {
+            const action = pendingQuitAction;
+            pendingQuitAction = null;
+            document.getElementById('quit-warn-overlay').style.display = 'none';
+            if (action === 'switch_cat') {
+                lastConfirmedCategory = document.getElementById('category-filter').value;
+            }
+            startNewSet();
+        }
+
+        window.addEventListener('beforeunload', (e) => {
+            if (isQuizInProgress()) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
 
         let sfxEnabled = true;
         let bgmEnabled = false;
