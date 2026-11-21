@@ -1242,6 +1242,8 @@
         let scoreBetul = 0;
         let scoreSalah = 0;
         let hasMadeMistakeThisRound = false;
+        let currentHistoryRowId = null;
+        let liveSyncPromise = Promise.resolve();
 
         let sfxEnabled = true;
         let bgmEnabled = false;
@@ -1395,6 +1397,7 @@
             scoreSalah = 0;
             quizStartTime = Date.now();
             wrongWordsThisSet = [];
+            currentHistoryRowId = null;
             document.getElementById('score-b').textContent = "0";
             document.getElementById('score-s').textContent = "0";
             document.getElementById('celebrate-screen').style.display = 'none';
@@ -1428,6 +1431,7 @@
             scoreSalah = 0;
             quizStartTime = Date.now();
             wrongWordsThisSet = [];
+            currentHistoryRowId = null;
             document.getElementById('score-b').textContent = "0";
             document.getElementById('score-s').textContent = "0";
             document.getElementById('celebrate-screen').style.display = 'none';
@@ -1443,6 +1447,7 @@
             scoreSalah = 0;
             quizStartTime = Date.now();
             wrongWordsThisSet = [];
+            currentHistoryRowId = null;
             document.getElementById('score-b').textContent = "0";
             document.getElementById('score-s').textContent = "0";
             document.getElementById('celebrate-screen').style.display = 'none';
@@ -1558,6 +1563,7 @@
                 if (!hasMadeMistakeThisRound) {
                     scoreBetul++;
                     document.getElementById('score-b').textContent = scoreBetul;
+                    syncLiveProgress();
                 }
 
                 btn.classList.add('correct');
@@ -1596,6 +1602,7 @@
                     scoreSalah++;
                     document.getElementById('score-s').textContent = scoreSalah;
                     wrongWordsThisSet.push({ en: currentQuestion.en, bm: currentQuestion.en, chinese: currentQuestion.chinese });
+                    syncLiveProgress();
                 }
 
                 // Show the exact Chinese meaning of the clicked wrong word!
@@ -1650,11 +1657,19 @@
             document.getElementById('final-accuracy').textContent = acc + "%";
             playSound('sfx-correct');
 
+            const record = buildCurrentRecord();
+            sessionHistory.unshift(record);
+            saveQuizHistory(record, activeAssignment);
+        }
+
+        function buildCurrentRecord() {
+            const answered = scoreBetul + scoreSalah;
+            const acc = answered > 0 ? Math.round((scoreBetul / answered) * 100) : 100;
             const durationSec = Math.max(1, Math.round((Date.now() - quizStartTime) / 1000));
             const cat = activeAssignment
                 ? `📝 ${activeAssignment.quiz_code}`
                 : document.getElementById('category-filter').value;
-            const record = {
+            return {
                 student_id: currentStudentId,
                 username: currentUsername || currentUserName,
                 display_name: currentUserName,
@@ -1667,8 +1682,39 @@
                 wrong_words: wrongWordsThisSet,
                 played_at: new Date().toISOString()
             };
-            sessionHistory.unshift(record);
-            saveQuizHistory(record, activeAssignment);
+        }
+
+        function syncLiveProgress() {
+            if (!currentStudentId || activePool.length === 0) return;
+            const snapshot = buildCurrentRecord();
+            liveSyncPromise = liveSyncPromise.then(async () => {
+                try {
+                    if (!currentHistoryRowId) {
+                        const res = await sbFetch("quiz_history_en", {
+                            method: "POST",
+                            headers: { "Prefer": "return=representation" },
+                            body: JSON.stringify(snapshot)
+                        });
+                        if (Array.isArray(res) && res[0] && res[0].id) {
+                            currentHistoryRowId = res[0].id;
+                        }
+                    } else {
+                        await sbFetch(`quiz_history_en?id=eq.${currentHistoryRowId}`, {
+                            method: "PATCH",
+                            body: JSON.stringify({
+                                score_correct: snapshot.score_correct,
+                                score_wrong: snapshot.score_wrong,
+                                accuracy: snapshot.accuracy,
+                                duration_seconds: snapshot.duration_seconds,
+                                wrong_words: snapshot.wrong_words,
+                                played_at: snapshot.played_at
+                            })
+                        });
+                    }
+                } catch (e) {
+                    console.warn("Live sync warning:", e.message);
+                }
+            });
         }
 
         async function saveQuizHistory(record, finishedAssign) {
@@ -1685,10 +1731,34 @@
             statusEl.style.color = "#1565c0";
             statusEl.style.borderColor = "#90caf9";
             try {
-                await sbFetch("quiz_history_en", {
-                    method: "POST",
-                    body: JSON.stringify(record)
-                });
+                await liveSyncPromise;
+                let savedViaPatch = false;
+                if (currentHistoryRowId) {
+                    try {
+                        const updated = await sbFetch(`quiz_history_en?id=eq.${currentHistoryRowId}`, {
+                            method: "PATCH",
+                            headers: { "Prefer": "return=representation" },
+                            body: JSON.stringify({
+                                score_correct: record.score_correct,
+                                score_wrong: record.score_wrong,
+                                total_questions: record.total_questions,
+                                accuracy: record.accuracy,
+                                duration_seconds: record.duration_seconds,
+                                wrong_words: record.wrong_words,
+                                played_at: record.played_at
+                            })
+                        });
+                        if (Array.isArray(updated) && updated.length > 0) savedViaPatch = true;
+                    } catch (patchErr) {
+                        savedViaPatch = false;
+                    }
+                }
+                if (!savedViaPatch) {
+                    await sbFetch("quiz_history_en", {
+                        method: "POST",
+                        body: JSON.stringify(record)
+                    });
+                }
                 if (finishedAssign) {
                     await sbFetch(`quiz_assignments_en?id=eq.${finishedAssign.id}`, {
                         method: "PATCH",
